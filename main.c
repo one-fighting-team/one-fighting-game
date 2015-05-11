@@ -26,21 +26,28 @@
 #include <unistd.h>    // usleep(3), fcntl(2)
 #include <fcntl.h>
 #include <stdbool.h>
+#include <ncurses.h>
+
+#define YBORDER 30
+#define XBORDER 80
+#define YMAX YBORDER-2
+#define XMAX XBORDER-2
 
 typedef struct {
-	enum { STANDING, JUMPING, KICKING_LEFT, KICKING_RIGHT } state;
+	enum { STANDING, JUMPING, KICKING_LEFT, KICKING_RIGHT, FALLING, STICK } state;
 	bool button_pushed;
 	bool last_kicker;
 	ssize_t x;
 	ssize_t y;
 	bool hit;
+	char avatar;
 } Character;
 
-static void display_characters(const Character *player_1, const Character *player_2)
+static void display_characters(WINDOW *win, const Character *player_1, const Character *player_2)
 {
-	fprintf(stderr, "\r                                       "); // TODO
-	fprintf(stderr, "\rp1: %zd, %zd vs. p2: %zd, %zd",
-		player_1->x, player_1->y, player_2->x, player_2->y);
+	mvwprintw(win, 1, 4, "p1: %zd, %zd vs. p2: %zd, %zd",
+			player_1->x, player_1->y, player_2->x, player_2->y);
+	wrefresh(win);
 }
 
 static void compute_next_step(Character *character, Character *opponent)
@@ -51,6 +58,7 @@ static void compute_next_step(Character *character, Character *opponent)
 			character->state = JUMPING;
 			break;
 		case JUMPING:
+		case FALLING:
 			character->state =
 				(character->x < opponent->x
 					? KICKING_RIGHT
@@ -60,6 +68,7 @@ static void compute_next_step(Character *character, Character *opponent)
 			break;
 		case KICKING_LEFT:
 		case KICKING_RIGHT:
+		case STICK:
 			// TODO
 			break;
 		}
@@ -70,15 +79,26 @@ static void compute_next_step(Character *character, Character *opponent)
 	case STANDING:
 		break;
 	case JUMPING:
+		character->y--;
+		if (character->y == 0) {
+			character->state = FALLING;
+			character->y++;
+		}
+		break;
+	case FALLING:
 		character->y++;
 		break;
 	case KICKING_LEFT:
-		character->y--;
+		character->y++;
 		character->x--;
 		break;
 	case KICKING_RIGHT:
-		character->y--;
+		character->y++;
 		character->x++;
+		break;
+	case STICK:
+		character->state = FALLING;
+		character->y++;
 		break;
 	}
 
@@ -86,13 +106,24 @@ static void compute_next_step(Character *character, Character *opponent)
 	    && character->y == opponent->y)
 		character->hit = true;
 
-	if (character->y == 0)
+	if (character->x < 1) {
+		character->state = STICK;
+		character->x++;
+	} else if (character->x > XMAX) {
+		character->state = STICK;
+		character->x--;
+	}
+
+	if (character->y == YMAX)
 		character->state = STANDING;
 }
 
-static void exit_winner(int winner)
+static void exit_winner(WINDOW *win, int winner)
 {
-	fprintf(stderr, "\nwinner is player %d\n", winner);
+	mvwprintw(win, 12, 20, "WINNER IS PLAYER %d", winner);
+	wrefresh(win);
+	sleep(5);
+	endwin();
 	exit(winner);
 }
 
@@ -104,38 +135,81 @@ static void configure_inputs()
 		exit(3);
 	}
 
-	// TODO: stty cbreak
+	cbreak();
+}
+
+static void erase_characters(WINDOW *win, const Character *player_1, const Character *player_2)
+{
+	mvwaddch(win, player_1->y, player_1->x, ' ');
+	mvwaddch(win, player_2->y, player_2->x, ' ');
+}
+
+static void draw_characters(WINDOW *win, const Character *player_1, const Character *player_2)
+{
+	mvwaddch(win, player_1->y, player_1->x, player_1->avatar | A_BOLD);
+	mvwaddch(win, player_2->y, player_2->x, player_2->avatar | A_BOLD);
+	wrefresh(win);
 }
 
 int main()
 {
+	WINDOW *title, *board, *debug;
+	int ch;
 	Character player_1 = {0};
 	Character player_2 = {0};
-	player_2.x = 10;
+	player_1.y = YMAX;
+	player_2.y = YMAX;
+	player_1.x = 21;
+	player_2.x = 59;
+	player_1.avatar = 'o';
+	player_2.avatar = 'x';
 
 	configure_inputs();
 
-	while (1) {
-		display_characters(&player_1, &player_2);
+	initscr();
+	curs_set(0);
+	noecho();
 
+	title = subwin(stdscr, 3, XBORDER, 0 ,0 );
+	board = subwin(stdscr, YBORDER, XBORDER, 3, 0);
+	debug = subwin(stdscr, 3, XBORDER, YBORDER+3, 0);
+
+	box(title,0,0);
+	box(board,0,0);
+	box(debug,0,0);
+
+	wattron(title, A_BOLD);
+	mvwaddstr(title, 1, 25, "*** The ONE Fighting Game ***");
+	refresh();
+
+	while (1) {
+		display_characters(debug, &player_1, &player_2);
+
+		erase_characters(board, &player_1, &player_2);
 		compute_next_step(&player_1, &player_2);
 		compute_next_step(&player_2, &player_1);
+		draw_characters(board, &player_1, &player_2);
 
 		if (player_1.hit || player_2.hit) {
 			if (player_1.last_kicker)
-				exit_winner(1);
+				exit_winner(board, 1);
 			else
-				exit_winner(2);
+				exit_winner(board, 2);
 		}
 
 		usleep(30000);
 
-		char c;
-		while (read(STDIN_FILENO, &c, 1) > 0) {
-			if (c == 'q')
+		ch = getch();
+		switch (ch) {
+			case 'q':
 				player_1.button_pushed = true;
-			if (c == 'p')
+				break;
+			case 'p':
 				player_2.button_pushed = true;
+				break;
+			default:
+				break;
 		}
 	}
+	endwin();
 }
