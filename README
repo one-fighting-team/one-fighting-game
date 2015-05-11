@@ -1,0 +1,39 @@
+=======================
+ One Fighting Game ...
+=======================
+
+----------------------
+ ... To Rule Them All
+----------------------
+
+
+Plot
+====
+
+One button, one hit, one winner.
+
+
+Gameplay
+========
+
+One button:
+
+- when standing -> jump
+- when jumping -> kick
+- when kicking -> guard (have to be frame perfect)
+
+There's no recovery.
+
+
+TODO
+====
+
+- stages: "boxed", "wrap around", "magnetized ceil/floor"
+- characters: 33, 45, 66
+- multiplayer
+- bonus: mid-air collision, first hit (multiplayer only)
+- graphical display (none, ncurses, SDL2)
+- network play
+- graphical trace
+- character more than one pixel?
+
