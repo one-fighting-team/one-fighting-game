@@ -27,11 +27,14 @@
 #include <fcntl.h>
 #include <stdbool.h>
 #include <ncurses.h>
+#include <string.h>
 
 #define YBORDER 30
-#define XBORDER 80
+#define XBORDER 120
 #define YMAX YBORDER-2
+#define YMIN 1
 #define XMAX XBORDER-2
+#define XMIN 1
 
 typedef struct {
 	enum { STANDING, JUMPING, KICKING_LEFT, KICKING_RIGHT, FALLING, STICK } state;
@@ -42,6 +45,11 @@ typedef struct {
 	bool hit;
 	char avatar;
 } Character;
+
+static int middle_pos (int min, int max, int len)
+{
+	return (max+min)/2-len/2;
+}
 
 static void display_characters(WINDOW *win, const Character *player_1, const Character *player_2)
 {
@@ -80,7 +88,7 @@ static void compute_next_step(Character *character, Character *opponent)
 		break;
 	case JUMPING:
 		character->y--;
-		if (character->y == 0) {
+		if (character->y < YMIN) {
 			character->state = FALLING;
 			character->y++;
 		}
@@ -106,7 +114,7 @@ static void compute_next_step(Character *character, Character *opponent)
 	    && character->y == opponent->y)
 		character->hit = true;
 
-	if (character->x < 1) {
+	if (character->x < XMIN) {
 		character->state = STICK;
 		character->x++;
 	} else if (character->x > XMAX) {
@@ -120,7 +128,14 @@ static void compute_next_step(Character *character, Character *opponent)
 
 static void exit_winner(WINDOW *win, int winner)
 {
-	mvwprintw(win, 12, 20, "WINNER IS PLAYER %d", winner);
+	const char* msg = "THE ONE WINNER IS";
+	int xpos = middle_pos (XMIN, XMAX, strlen(msg));
+	int ypos = middle_pos (YMIN, YMAX, 0);
+	wattron(win, A_BOLD);
+	wattron(win, COLOR_PAIR(1));
+	mvwprintw(win, ypos, xpos, msg);
+	xpos = middle_pos (XMIN, XMAX, 8);
+	mvwprintw(win, ypos+1, xpos, "PLAYER %d", winner);
 	wrefresh(win);
 	sleep(5);
 	endwin();
@@ -146,21 +161,38 @@ static void erase_characters(WINDOW *win, const Character *player_1, const Chara
 
 static void draw_characters(WINDOW *win, const Character *player_1, const Character *player_2)
 {
+	wattron(win, COLOR_PAIR(2));
 	mvwaddch(win, player_1->y, player_1->x, player_1->avatar | A_BOLD);
+	wattroff(win, COLOR_PAIR(2));
+	wattron(win, COLOR_PAIR(3));
 	mvwaddch(win, player_2->y, player_2->x, player_2->avatar | A_BOLD);
+	wattroff(win, COLOR_PAIR(3));
 	wrefresh(win);
+}
+
+
+static void color_init() 
+{
+	start_color();
+	init_pair(1, COLOR_RED, COLOR_BLACK);
+	init_pair(2, COLOR_BLUE, COLOR_BLACK);
+	init_pair(3, COLOR_GREEN, COLOR_BLACK);
+	init_pair(4, COLOR_CYAN, COLOR_BLACK);
+	init_pair(5, COLOR_YELLOW, COLOR_BLACK);
 }
 
 int main()
 {
 	WINDOW *title, *board, *debug;
 	int ch;
+	int pos;
+	const char* banner = "*** The ONE Fighting Game ***";
 	Character player_1 = {0};
 	Character player_2 = {0};
 	player_1.y = YMAX;
 	player_2.y = YMAX;
-	player_1.x = 21;
-	player_2.x = 59;
+	player_1.x = XMIN+20;
+	player_2.x = XMAX-20;
 	player_1.avatar = 'o';
 	player_2.avatar = 'x';
 
@@ -169,6 +201,7 @@ int main()
 	initscr();
 	curs_set(0);
 	noecho();
+	color_init();
 
 	title = subwin(stdscr, 3, XBORDER, 0 ,0 );
 	board = subwin(stdscr, YBORDER, XBORDER, 3, 0);
@@ -179,7 +212,9 @@ int main()
 	box(debug,0,0);
 
 	wattron(title, A_BOLD);
-	mvwaddstr(title, 1, 25, "*** The ONE Fighting Game ***");
+	wattron(title, COLOR_PAIR(1));
+	pos = middle_pos(XMIN, XMAX, strlen(banner));
+	mvwaddstr(title, 1, pos, banner);
 	refresh();
 
 	while (1) {
