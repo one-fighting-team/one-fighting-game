@@ -28,7 +28,18 @@ There's no recovery.
 TODO
 ====
 
-- stages: "boxed", "wrap around", "magnetized ceil/floor"
+- split sources:
+  - inputs/:
+    - keyboard
+    - pipe (for bots and tests)
+    - network (client for network play)
+  - outputs/:
+    - text (ncurses)
+    - 2D (SDL)
+    - 3D (OpenGL)
+  - core/
+  - server/ (for network play)
+- stages: "boxed", "wrap around", "magnetized (all walls)"
 - characters: 33, 45, 66
 - multiplayer
 - bonus: mid-air collision, first hit (multiplayer only)
